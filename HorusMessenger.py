@@ -4,15 +4,21 @@
 #   LoRa Text Messenger
 #   Copyright 2015 Mark Jessop <vk5qi@rfhead.net>
 #
+#   Modifications by Will Anthony <willanth@gmail.com>
+#
 
-from HorusPackets import *
+import HorusPackets as HP #changed from wildcard import as it is not good style
 from threading import Thread
 from PyQt4 import QtGui, QtCore
 from datetime import datetime
-import socket,json,sys,Queue
+import socket
+import json
+import sys
+import Queue
 import ConfigParser
 
-udp_broadcast_port = HORUS_UDP_PORT
+
+udp_broadcast_port = HP.HORUS_UDP_PORT
 udp_listener_running = False
 
 # RX Message queue to avoid threading issues.
@@ -57,11 +63,12 @@ except:
 
 # Send a message!
 def send_message():
-	callsign = str(callsignBox.text())
-	message = str(messageBox.text())
-	message_packet = create_text_message_packet(callsign,message)
-	tx_packet(message_packet)
-	messageBox.setText("")
+    
+    callsign = str(callsignBox.text())
+    message = str(messageBox.text())
+    message_packet = HP.create_text_message_packet(callsign,message)
+    HP.tx_packet(message_packet)
+    messageBox.setText("")
 
 messageBox.returnPressed.connect(send_message)
 callsignBox.returnPressed.connect(send_message)
@@ -77,18 +84,18 @@ def process_udp(udp_packet):
 		print packet_dict['type']
 		# TX Confirmation Packet?
 		if packet_dict['type'] == 'TXDONE':
-			if(packet_dict['payload'][0] == HORUS_PACKET_TYPES.TEXT_MESSAGE):
-				(source,message) = read_text_message_packet(packet_dict['payload'])
+			if(packet_dict['payload'][0] == HP.HORUS_PACKET_TYPES.TEXT_MESSAGE):
+				(source,message) = HP.read_text_message_packet(packet_dict['payload'])
 				line += "<%8s> %s" % (source,message)
 				console.appendPlainText(line)
 		elif packet_dict['type'] == 'RXPKT':
-			if(packet_dict['payload'][0] == HORUS_PACKET_TYPES.TEXT_MESSAGE):
+			if(packet_dict['payload'][0] == HP.HORUS_PACKET_TYPES.TEXT_MESSAGE):
 				rssi = float(packet_dict['rssi'])
 				snr = float(packet_dict['snr'])
 				print packet_dict['payload']
-				(source,message) = read_text_message_packet(packet_dict['payload'])
+				(source,message) = HP.read_text_message_packet(packet_dict['payload'])
 
-				payload_flags = decode_payload_flags(packet_dict['payload'])
+				payload_flags = HP.decode_payload_flags(packet_dict['payload'])
 				if payload_flags['is_repeated']:
 					line += "<%8s via #%d>" % (source,payload_flags['repeater_id'])
 				else:
@@ -108,16 +115,16 @@ def process_udp(udp_packet):
 		pass
 
 def udp_rx_thread():
-	global udp_listener_running
+	
 	s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 	s.settimeout(1)
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	s.bind(('',HORUS_UDP_PORT))
+	s.bind(('',HP.HORUS_UDP_PORT))
 	print("Started UDP Listener Thread.")
 	udp_listener_running = True
-	while udp_listener_running:
+	while udp_listener_running:    #FIXME this while has no bound or pre-predicted exit, sure there's a socket timeout exception but that's still not very good.
 		try:
-			m = s.recvfrom(MAX_JSON_LEN)
+			m = s.recvfrom(HP.MAX_JSON_LEN)
 		except socket.timeout:
 			m = None
 		

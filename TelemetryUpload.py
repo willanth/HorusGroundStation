@@ -8,7 +8,7 @@
 #	This should also be useful in headless receiver situations.
 #
 
-from HorusPackets import *
+import HorusPackets
 from threading import Thread
 from datetime import datetime
 import socket,json,sys,argparse

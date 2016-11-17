@@ -6,7 +6,7 @@
 #
 #	A quick hack to test the binary telemetry decoder.
 
-from HorusPackets import *
+import HorusPackets
 import socket,json,sys,Queue
 
 udp_listener_running = False

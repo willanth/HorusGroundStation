@@ -87,10 +87,10 @@
 #   }
 #
 
+import HorusPackets
 import json,socket,Queue,random, argparse, sys
 from time import sleep
 from threading import Thread
-from HorusPackets import *
 from datetime import *
 
 

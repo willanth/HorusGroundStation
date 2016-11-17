@@ -5,7 +5,7 @@
 #   Copyright 2015 Mark Jessop <vk5qi@rfhead.net>
 #
 
-from HorusPackets import *
+import HorusPackets
 from threading import Thread
 from datetime import datetime
 import socket,json,sys,Queue,argparse,time

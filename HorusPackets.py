@@ -1,14 +1,22 @@
 #!/usr/bin/env python2.7
 #
-#   Project Horus 
+#   Project Horus
 #   Packet Parsers
 #   Copyright 2015 Mark Jessop <vk5qi@rfhead.net>
 #
+#   Modifications by Will Anthony <willanth@gmail.com>
+#
 
-import time, struct, json, socket, httplib, crcmod, urllib, urllib2
+import time
+import struct
+import json
+import socket
+import httplib
+import crcmod
 from base64 import b64encode
 from hashlib import sha256
 from datetime import datetime
+
 
 HORUS_UDP_PORT = 55672
 HORUS_OZIPLOTTER_PORT = 8942
@@ -17,23 +25,42 @@ TX_QUEUE_SIZE = 32
 
 # Packet Payload Types
 class HORUS_PACKET_TYPES:
+    """Types of Packets used for Horus"""
     PAYLOAD_TELEMETRY     = 0
     TEXT_MESSAGE          = 1
     CUTDOWN_COMMAND       = 2
     PARAMETER_CHANGE      = 3
     COMMAND_ACK           = 4
-    # Accept SSDV packets 'as-is'. https://ukhas.org.uk/guides:ssdv
-    SSDV_FEC              = 0x66
-    SSDV_NOFEC            = 0x67
 
-class HORUS_PAYLOAD_PARAMS:
+
+class HORUS_PAYLOAD_PARAMS:         #TODO include settings to enable/disable TDMA as well as set TDMA slot
+    """Horus Payload transmit/listen time"""
     PING                  = 0
     LISTEN_TIME           = 1
+    TDMA_ENABLE           = 2
+
 
 
 # Some utilities to use in other programs.
 def decode_payload_type(packet):
     # This expects the payload as an integer list. Convert it to one if it isn't already
+    """
+    Decodes the packet type.
+
+    Reads off the first value of the packet (type flag) and returns this.
+
+    Parameters
+    ----------
+    arg1 : list
+            RX'd radio packet
+
+    Returns
+    -------
+    int
+        Packet type value as defined in HORUS_PACKET_TYPES
+
+    """
+
     packet = list(bytearray(packet))
 
     # First byte of every packet is the payload type.
@@ -41,8 +68,52 @@ def decode_payload_type(packet):
 
     return payload_type
 
+def decode_payload_ID(packet):
+    #expects an integer list, convert it to one if it isn't one already.
+    """
+    Decodes the address of the transmitting station.
+
+    Reads off the third value of the packet (ID byte) and returns this.
+
+    Parameters
+    ----------
+    arg1 : list
+            RX'd radio packet
+
+    Returns
+    -------
+    int
+        Packet type value as defined in HORUS_PACKET_TYPES
+
+    """
+
+    packet = list(bytearray(packet))
+
+    payload_address = packet[2]
+
+    return payload_address
+
+
 def decode_payload_flags(packet):
     # This expects the payload as an integer list. Convert it to one if it isn't already
+    """
+    Decodes the packet flags.
+
+    Reads off the flags placed on a packet, indicating if it has been repeated
+    or otherwise modified.
+
+    Parameters
+    ----------
+    arg1 : list
+        RX'd radio packet
+
+
+    Returns
+    -------
+    string
+        Packet repeat status
+
+    """
     packet = list(bytearray(packet))
 
     # Payload flags is always the second byte.
@@ -61,15 +132,38 @@ def decode_payload_flags(packet):
 # Byte 2-9 - Callsign (Max 8 chars. Padded to 8 characters if shorter.)
 # Bytes 10-63 - Message (Max 55 characters. Not padded!)
 def create_text_message_packet(source="N0CALL", message="CQ CQ CQ"):
+    #TODO does this function need to have a source and destination address,
+    #or is it just for broadcast to all the RX'ing stations?
+
+    """
+    Constructs text message packet.
+
+    Constructs and returns a packet used for text messaging in the Horus
+    format.  Automatically builds in all payload ID, payload flags.
+
+    Parameters
+    ----------
+    arg1 : string
+        Callsign of Source Station
+
+    arg2 : string
+        Message text to be transmitted
+
+    Returns
+    -------
+    list
+        Constructed packet
+
+    """
     # Sanitise input
-    if len(source)>8:
+    if len(source) > 8:
         source = source[:8]
 
-    if len(message)>54:
+    if len(message) > 54:
         message = message[:54]
 
     # Pad data if required.
-    if len(source)<8:
+    if len(source) < 8:
         source = source + "\x00"*(8-len(source))
 
     packet = [HORUS_PACKET_TYPES.TEXT_MESSAGE,0] + list(bytearray(source)) + list(bytearray(message))
@@ -77,44 +171,28 @@ def create_text_message_packet(source="N0CALL", message="CQ CQ CQ"):
 
 def read_text_message_packet(packet):
     # Convert packet into a string, if it isn't one already.
+    """
+    Reads text message packets.
+
+    Extended description of function.
+
+    Parameters
+    ----------
+    arg1 : list
+        RX'd Horus Format radio packet
+
+
+    Returns
+    -------
+    tuple
+        Source callsign, message text
+
+    """
     packet = str(bytearray(packet))
     source = packet[2:9].rstrip(' \t\r\n\0')
     message = packet[10:].rstrip('\n\0')
     return (source,message)
 
-# SSDV Packets
-# Generally we will just send this straight out to ssdv.habhub.org
-def read_ssdv_packet_info(packet):
-    packet = list(bytearray(packet))
-    # Check packet is actually a SSDV packet.
-    if len(packet) != 255:
-        return "SSDV: Invalid Length"
-
-
-    # We got this far, may as well try and extract the packet info.
-    callsign = "???"
-    packet_type = "FEC" if (packet[0]==0x66) else "No-FEC"
-    image_id = packet[5]
-    packet_id = (packet[6]<<8) + packet[7]
-    width = packet[8]*16
-    height = packet[9]*16
-
-    return "SSDV: %s, Img:%d, Pkt:%d, %dx%d" % (packet_type,image_id,packet_id,width,height)
-
-def upload_ssdv_packet(packet, callsign="N0CALL"):
-    packet = "\x55" + str(bytearray(packet))
-    hexpacket = "".join(x.encode('hex') for x in packet)
-    url = "http://www.sanslogic.co.uk/ssdv/data.php"
-    values = {'callsign':callsign,
-        'encoding':'hex',
-        'packet':data}
-    valuedata = urllib.urlencode(values)
-    req = urllib2.Request(url,valuedata)
-    try:
-        response = urllib2.urlopen(req)
-        return (True,"OK")
-    except Exception as e:
-        return (False,"Failed to upload SSDV to Habitat: %s" % (str(e)))
 
 # PAYLOAD TELEMETRY PACKET
 # This one is in a bit of flux at the moment.
@@ -140,14 +218,32 @@ def upload_ssdv_packet(packet, callsign="N0CALL"):
 # };  //  __attribute__ ((packed));
 
 def decode_horus_payload_telemetry(packet):
+    """
+    Decodes telemetry packet.
+
+    Decodes telemetry packet and produces a human readable string output for
+    display and logging.
+
+    Parameters
+    ----------
+    arg1 : list
+        RX'd Horus Format radio packet
+
+    Returns
+    -------
+    string
+        Telemetry information in human readable format
+
+    """
+
     packet = str(bytearray(packet))
 
     horus_format_struct = "<BBBHHffHBBBBBBBB"
     try:
         unpacked = struct.unpack(horus_format_struct, packet)
-    except:
+    except Exception as e:      #TODO improve this exception handling to be meaningful
         print "Wrong string length. Packet contents:"
-        print ":".join("{:02x}".format(ord(c)) for c in data)
+        print ":".join("{:02x}".format(ord(c)) for c in packet)
         return {}
 
     telemetry = {}
@@ -178,9 +274,28 @@ def decode_horus_payload_telemetry(packet):
 # Convert telemetry dictionary to a Habitat-compatible telemetry string.
 # The below is compatible with genpayload doc ID# f18a873592a77ed01ea432c3bcc16d0f
 def telemetry_to_sentence(telemetry):
-    sentence = "$$HORUSLORA,%d,%s,%.5f,%.5f,%d,%d,%d,%.2f,%.2f,%d,%d" % (telemetry['counter'],telemetry['time'],telemetry['latitude'],
-        telemetry['longitude'],telemetry['altitude'],telemetry['speed'],telemetry['sats'],telemetry['batt_voltage'],
-        telemetry['pyro_voltage'],telemetry['RSSI'],telemetry['rxPktCount'])
+    """
+    Summary line.
+
+    Extended description of function.
+
+    Parameters
+    ----------
+    arg1 : int
+        Description of arg1
+    arg2 : str
+        Description of arg2
+
+    Returns
+    -------
+    int
+        Description of return value
+
+    """
+
+    sentence = "$$HORUSLORA,%d,%s,%.5f,%.5f,%d,%d,%d,%.2f,%.2f,%d,%d" % (telemetry['counter'], telemetry['time'], telemetry['latitude'],
+    telemetry['longitude'], telemetry['altitude'], telemetry['speed'], telemetry['sats'], telemetry['batt_voltage'],
+    telemetry['pyro_voltage'], telemetry['RSSI'], telemetry['rxPktCount'])
 
     checksum = crc16_ccitt(sentence[2:])
     output = sentence + "*" + checksum + "\n"
@@ -190,7 +305,7 @@ def telemetry_to_sentence(telemetry):
 def crc16_ccitt(data):
     """
     Calculate the CRC16 CCITT checksum of *data*.
-    
+
     (CRC16 CCITT: start 0xFFFF, poly 0x1021)
     """
     crc16 = crcmod.predefined.mkCrcFun('crc-ccitt-false')
@@ -198,6 +313,24 @@ def crc16_ccitt(data):
 
 # Command ACK Packet. Sent by the payload to acknowledge a command (i.e. cutdown or param change) has been executed.
 def decode_command_ack(packet):
+    """
+    Decodes ACK of command.
+
+    This function decodes and handles the ACK sent by the Mission Control
+    Payload when it is sent a command.
+
+    Parameters
+    ----------
+    arg1 : list
+        RX'd Horus Format radio packet
+
+    Returns
+    -------
+    list
+        decoded and human-readable result of the ack packet
+
+    """
+
     packet = list(bytearray(packet))
     if len(packet) != 7:
         print "Invalid length for Command ACK."
@@ -217,45 +350,119 @@ def decode_command_ack(packet):
 
     return ack_packet
 
-def create_cutdown_packet(time=4,passcode="zzz"):
-    if len(passcode)<3: # Pad out passcode. This will probably cause the payload not to accept it though.
+def create_cutdown_packet(address, time=4, passcode="zzz"):   #FIXME should this have a different variable name as this throws a LINT W0621
+    """
+    Generates mission abort packet.
+
+    Takes a time delay argument, the on-air address of the mission control payload,
+    and a passcode unique to the payload and generates a mission abort command packet.
+
+    Parameters
+    ----------
+    arg1 : int
+        Destination payload address
+
+    arg2 : int
+        Duration of abort output (FET ON) in seconds
+
+    arg3 : str
+        Passcode string
+
+    Returns
+    -------
+    list
+        packet in Horus format
+
+    """
+
+    if len(passcode) < 3: # Pad out passcode. This will probably cause the payload not to accept it though.
         passcode = passcode + "   "
 
     # Sanitize cut time.
-    if time>10:
+    #TODO if we are passing a time value, why force it to be 0 or 10?  We may be able to validate this and use it
+    if time > 10:
         time = 10
-    if time<0:
+    if time < 0:
         time = 0
 
-    cutdown_packet = [HORUS_PACKET_TYPES.CUTDOWN_COMMAND,0,0,0,0,0]
-    cutdown_packet[2] = ord(passcode[0])
-    cutdown_packet[3] = ord(passcode[1])
-    cutdown_packet[4] = ord(passcode[2])
-    cutdown_packet[5] = time
+    #TODO Sanitize mission control payload addressing?
+
+    cutdown_packet = [HORUS_PACKET_TYPES.CUTDOWN_COMMAND, 0, 0, 0, 0, 0, 0] #FIXME why lay this out, and then assign values below?
+    cutdown_packet[2] = address
+    cutdown_packet[3] = ord(passcode[0])
+    cutdown_packet[4] = ord(passcode[1])
+    cutdown_packet[5] = ord(passcode[2])
+    cutdown_packet[6] = time
 
     return cutdown_packet
 
-def create_param_change_packet(param = HORUS_PAYLOAD_PARAMS.PING, value = 10, passcode = "zzz"):
-    if len(passcode)<3: # Pad out passcode. This will probably cause the payload not to accept it though.
+def create_param_change_packet(address, param = HORUS_PAYLOAD_PARAMS.PING, value = 10, passcode = "zzz"):   #TODO will this play nice with TDMA slot setting instructions?
+    """
+    Generates parameter change packet.
+
+    Constructs a packet that changes parameters aboard the mission control payload.
+
+    Parameters
+    ----------
+    arg1 : int
+        Address of desired mission control payload
+    arg2 : int
+        Parameter to be modified (from const struct)
+    arg3 : int
+        Value to be written into parameter
+    arg4 : str
+        Passcode to authenticate instruction
+
+    Returns
+    -------
+    list
+        Constructed packet for TX
+
+    """
+
+    if len(passcode) < 3: # Pad out passcode. This will probably cause the payload not to accept it though.
         passcode = passcode + "   "
     # Sanitize parameter and value inputs.
-    if param>255:
+    if param > 255:
         param = 255
 
-    if value>255:
+    if value > 255:
         value = 255
 
-    param_packet = [HORUS_PACKET_TYPES.PARAMETER_CHANGE,0,0,0,0,0,0]
-    param_packet[2] = ord(passcode[0])
-    param_packet[3] = ord(passcode[1])
-    param_packet[4] = ord(passcode[2])
-    param_packet[5] = param
-    param_packet[6] = value
+    #TODO sanitize addressing?
+
+    param_packet = [HORUS_PACKET_TYPES.PARAMETER_CHANGE, 0, 0, 0, 0, 0, 0]  #FIXME why lay this out this way and then fill values as below?
+    param_packet[2] = address
+    param_packet[3] = ord(passcode[0])
+    param_packet[4] = ord(passcode[1])
+    param_packet[5] = ord(passcode[2])
+    param_packet[6] = param
+    param_packet[7] = value
 
     return param_packet
 
 # Transmit packet via UDP Broadcast
 def tx_packet(payload,blocking=False,timeout=4):
+    """
+    Sends constructed packet over UDP to PHY.
+
+    Sets up the UDP transmission of a constructed packet to the Physical Layer
+    interface over a network.
+
+    Parameters
+    ----------
+    arg1 : int
+        Description of arg1
+    arg2 : str
+        Description of arg2
+
+    Returns
+    -------
+    int
+        Description of return value
+
+    """
+
     packet = {
         'type' : 'TXPKT',
         'payload' : list(bytearray(payload))
@@ -278,13 +485,13 @@ def tx_packet(payload,blocking=False,timeout=4):
     if blocking:
         start_time = time.time() # Start time for our timeout.
 
-        while (time.time()-start_time) < timeout:
+        while (time.time()-start_time) < timeout:   #TODO timeout is not defined in this function, if it is global reading is ok but must be documented.
             try:
-                print("Waiting for UDP")
-                (m,a) = s.recvfrom(MAX_JSON_LEN)
+                print "Waiting for UDP"
+                (m,a) = s.recvfrom(MAX_JSON_LEN)    #address part of the return is not used (per MJ)
             except socket.timeout:
                 m = None
-            
+
             if m != None:
                 try:
                     packet = json.loads(m)
@@ -310,12 +517,31 @@ def tx_packet(payload,blocking=False,timeout=4):
 
 # Produce short string representation of packet payload contents.
 def payload_to_string(packet):
+    """
+    Summary line.
+
+    Extended description of function.
+
+    Parameters
+    ----------
+    arg1 : int
+        Description of arg1
+    arg2 : str
+        Description of arg2
+
+    Returns
+    -------
+    int
+        Description of return value
+
+    """
+
     payload_type = decode_payload_type(packet)
 
     if payload_type == HORUS_PACKET_TYPES.PAYLOAD_TELEMETRY:
         telemetry = decode_horus_payload_telemetry(packet)
-        data = "Balloon Telemetry: %s,%d,%.5f,%.5f,%d,%d,%.2f,%.2f,%d,%d" % (telemetry['time'],telemetry['counter'],
-            telemetry['latitude'],telemetry['longitude'],telemetry['altitude'],telemetry['sats'],telemetry['batt_voltage'],telemetry['pyro_voltage'],telemetry['rxPktCount'],telemetry['RSSI'])
+        data = "Balloon Telemetry: %s,%d,%.5f,%.5f,%d,%d,%.2f,%.2f,%d,%d" % (telemetry['time'], telemetry['counter'],
+            telemetry['latitude'], telemetry['longitude'], telemetry['altitude'], telemetry['sats'], telemetry['batt_voltage'],telemetry['pyro_voltage'],telemetry['rxPktCount'],telemetry['RSSI'])
         return data
     elif payload_type == HORUS_PACKET_TYPES.TEXT_MESSAGE:
         (source, message) = read_text_message_packet(packet)
@@ -334,13 +560,30 @@ def payload_to_string(packet):
         return data
     elif payload_type == HORUS_PACKET_TYPES.PARAMETER_CHANGE:
         return "Parameter Change"
-    elif (payload_type == HORUS_PACKET_TYPES.SSDV_FEC) or (payload_type == HORUS_PACKET_TYPES.SSDV_NOFEC):
-        return read_ssdv_packet_info(packet)
 
     else:
         return "Unknown Payload"
 
 def udp_packet_to_string(udp_packet):
+    """
+    Summary line.
+
+    Extended description of function.
+
+    Parameters
+    ----------
+    arg1 : int
+        Description of arg1
+    arg2 : str
+        Description of arg2
+
+    Returns
+    -------
+    int
+        Description of return value
+
+    """
+
     try:
         pkt_type = udp_packet['type']
     except Exception as e:
@@ -408,13 +651,32 @@ def habitat_upload_payload_telemetry(telemetry, callsign="N0CALL"):
             {"Content-Type": "application/json"}  # HEADERS
             )
 
-        response = c.getresponse()
+        response = c.getresponse()  #TODO this is a dead-end assignment used to poll the function (Per MJ)
         return (True,"OK")
     except Exception as e:
         return (False,"Failed to upload to Habitat: %s" % (str(e)))
 
 # OziPlotter Upload Functions
 def oziplotter_upload_telemetry(telemetry,hostname="127.0.0.1"):
+    """
+    Summary line.
+
+    Extended description of function.
+
+    Parameters
+    ----------
+    arg1 : int
+        Description of arg1
+    arg2 : str
+        Description of arg2
+
+    Returns
+    -------
+    int
+        Description of return value
+
+    """
+
     sentence = telemetry_to_sentence(telemetry)
 
     try:

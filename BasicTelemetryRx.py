@@ -6,8 +6,10 @@
 #
 #	A quick hack to test the binary telemetry decoder.
 
-from HorusPackets import *
-import socket,json,sys,Queue
+import HorusPackets as HP
+import socket
+import json 
+ #sys and Queue were important but unused
 
 udp_listener_running = False
 
@@ -15,7 +17,7 @@ def process_udp(udp_packet):
 	try:
 		packet_dict = json.loads(udp_packet)
 		
-		print(udp_packet_to_string(packet_dict))
+		print(HP.udp_packet_to_string(packet_dict))
 	except:
 		pass
 
@@ -24,12 +26,12 @@ def udp_rx_thread():
 	s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 	s.settimeout(1)
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	s.bind(('',HORUS_UDP_PORT))
+	s.bind(('',HP.HORUS_UDP_PORT))
 	print("Started UDP Listener Thread.")
 	udp_listener_running = True
 	while udp_listener_running:
 		try:
-			m = s.recvfrom(MAX_JSON_LEN)
+			m = s.recvfrom(HP.MAX_JSON_LEN)
 		except socket.timeout:
 			m = None
 		

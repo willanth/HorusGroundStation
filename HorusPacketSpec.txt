@@ -1,0 +1,27 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Nov 16 21:54:45 2016
+
+@author: Will Anthony
+"""
+
+Horus on-air packet structure:
+
+Word:   Type:       Purpose:
+
+1       uint8_t     PacketType;
+2       uint8_t     PayloadFlags;
+3       uint8_t     PayloadIDs;
+4       uint16_t    Counter;
+5       uint16_t    BiSeconds;
+6       float       Latitude;
+7       float       Longitude;
+8       uint16_t    Altitude;
+9       uint8_t     Speed; // Speed in Knots (1-255 knots)
+10      uint8_t     Sats;
+11      uint8_t     Temp; // Twos Complement Temp value.
+12      uint8_t     BattVoltage; // 0 = 0.5v, 255 = 2.0V, linear steps in-between.
+13      uint8_t     PyroVoltage; // 0 = 0v, 255 = 5.0V, linear steps in-between.
+14      uint8_t     rxPktCount; // RX Packet Count.
+15      uint8_t     rxRSSI; // Ambient RSSI value, measured just before transmission.
+16      uint8_t     telemFlags; // Various payload flags, TBD

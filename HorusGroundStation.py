@@ -4,15 +4,18 @@
 #   LoRa Ground Station Main GUI
 #   Copyright 2015 Mark Jessop <vk5qi@rfhead.net>
 #
+#   Modifications by Will Anthony <willanth@gmail.com>
+#
 
-from HorusPackets import *
+#from HorusPackets import *  ## import wildcards are considered bad practice
 from threading import Thread
 from PyQt4 import QtGui, QtCore
 from datetime import datetime
 import socket,json,sys,Queue,random,os,math
 import ConfigParser
+import HorusPackets as HP
 
-udp_broadcast_port = HORUS_UDP_PORT
+udp_broadcast_port = HP.HORUS_UDP_PORT
 udp_listener_running = False
 
 foxtrot_log = "foxtrot.log"
@@ -205,8 +208,8 @@ def cutdownButtonPressed():
 	cutdown_password = str(cutdownParameterPassword.text())
 	uplink_value = int(str(cutdownParameterValue.text()))
 	if str(cutdownCommandValue.currentText()) == "Ping":
-		ping_packet = create_param_change_packet(param = HORUS_PAYLOAD_PARAMS.PING, value = uplink_value, passcode = cutdown_password)
-		tx_packet(ping_packet)
+		ping_packet = HP.create_param_change_packet(param = HP.HORUS_PAYLOAD_PARAMS.PING, value = uplink_value, passcode = cutdown_password)
+		HP.tx_packet(ping_packet)
 	elif str(cutdownCommandValue.currentText()) == "Cutdown":
 		msgBox = QtGui.QMessageBox()
 		msgBox.setText("Are you sure you want to cutdown?")
@@ -218,11 +221,11 @@ def cutdownButtonPressed():
 			return
 		else:
 			# Actually Cutdown!
-			cutdown_packet = create_cutdown_packet(time=uplink_value,passcode = cutdown_password)
-			tx_packet(cutdown_packet)
+			cutdown_packet = HP.create_cutdown_packet(time=uplink_value,passcode = cutdown_password)
+			HP.tx_packet(cutdown_packet)
 	elif str(cutdownCommandValue.currentText()) == "Update Rate":
-		param_packet = create_param_change_packet(param = HORUS_PAYLOAD_PARAMS.LISTEN_TIME, value = uplink_value, passcode = cutdown_password)
-		tx_packet(param_packet)
+		param_packet = HP.create_param_change_packet(param = HP.HORUS_PAYLOAD_PARAMS.LISTEN_TIME, value = uplink_value, passcode = cutdown_password)
+		HP.tx_packet(param_packet)
 	else:
 		pass
 cutdownButton.clicked.connect(cutdownButtonPressed)
@@ -290,9 +293,9 @@ uploadFrameLayout.addWidget(uploadFrameFoxTrot,5,0,1,1)
 uploadFrame.setLayout(uploadFrameLayout)
 
 def habitat_upload(telemetry):
-	sentence = telemetry_to_sentence(telemetry)
+	sentence = HP.telemetry_to_sentence(telemetry)
 	timestamp = datetime.utcnow().isoformat()
-	(success,error) = habitat_upload_payload_telemetry(telemetry,callsign=str(uploadFrameCallsign.text()))
+	(success,error) = HP.habitat_upload_payload_telemetry(telemetry,callsign=str(uploadFrameCallsign.text()))
 	if success:
 		uploadFrameHabitatTitle.setText("Last Upload: %s" % datetime.utcnow().strftime("%H:%M:%S"))
 		console.appendPlainText("%s Habitat Upload: %s" % (timestamp, sentence))
@@ -395,11 +398,11 @@ def processPacket(packet):
 	
 	# Now delve into the payload.
 	payload = packet['payload']
-	payload_type = decode_payload_type(payload)
+	payload_type = HP.decode_payload_type(payload)
 
-	if payload_type == HORUS_PACKET_TYPES.PAYLOAD_TELEMETRY:
-		telemetry = decode_horus_payload_telemetry(payload)
-		print(telemetry_to_sentence(telemetry))
+	if payload_type == HP.HORUS_PACKET_TYPES.PAYLOAD_TELEMETRY:
+		telemetry = HP.decode_horus_payload_telemetry(payload)
+		print(HP.telemetry_to_sentence(telemetry))
 		lastPacketTypeValue.setText("Telemetry")
 		# Now populate the multitude of labels...
 		payloadStatusPacketCountValue.setText("%d" % telemetry['counter'])
@@ -425,18 +428,18 @@ def processPacket(packet):
 			habitat_upload(telemetry)
 
 		if uploadFrameOziPlotter.isChecked():
-			oziplotter_upload_telemetry(telemetry)
+			HP.oziplotter_upload_telemetry(telemetry)
 
 		if uploadFrameFoxTrot.isChecked():
 			foxtrot_update(telemetry)
 
-	elif payload_type == HORUS_PACKET_TYPES.TEXT_MESSAGE:
+	elif payload_type == HP.HORUS_PACKET_TYPES.TEXT_MESSAGE:
 		lastPacketTypeValue.setText("Text Message")
 
-	elif payload_type == HORUS_PACKET_TYPES.COMMAND_ACK:
+	elif payload_type == HP.HORUS_PACKET_TYPES.COMMAND_ACK:
 		lastPacketTypeValue.setText("Command Ack")
 		cutdownResponseTimeValue.setText(packet['timestamp'])
-		command_ack = decode_command_ack(payload)
+		command_ack = HP.decode_command_ack(payload)
 		cutdownResponseRSSIValue.setText("%d dBm" % command_ack['rssi'])
 		cutdownResponseSNRValue.setText("%.1f dB" % command_ack['snr'])
 		cutdownResponseTypeValue.setText(command_ack['command'])
@@ -448,7 +451,7 @@ def process_udp(udp_packet):
 	try:
 		packet_dict = json.loads(udp_packet)
 		
-		new_data = udp_packet_to_string(packet_dict)
+		new_data = HP.udp_packet_to_string(packet_dict)
 		console.appendPlainText(new_data)
 
 		if packet_dict['type'] == 'RXPKT':
@@ -462,12 +465,12 @@ def udp_rx_thread():
 	s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 	s.settimeout(1)
 	s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-	s.bind(('',HORUS_UDP_PORT))
+	s.bind(('',HP.HORUS_UDP_PORT))
 	print("Started UDP Listener Thread.")
 	udp_listener_running = True
 	while udp_listener_running:
 		try:
-			m = s.recvfrom(MAX_JSON_LEN)
+			m = s.recvfrom(HP.MAX_JSON_LEN)
 		except socket.timeout:
 			m = None
 		
