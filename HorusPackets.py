@@ -38,6 +38,7 @@ class HORUS_PAYLOAD_PARAMS:         #TODO include settings to enable/disable TDM
     PING                  = 0
     LISTEN_TIME           = 1
     TDMA_ENABLE           = 2
+    TDMA_SLOT             = 3
 
 
 
@@ -121,6 +122,7 @@ def decode_payload_flags(packet):
     payload_flags = {
         'repeater_id'    : payload_flags_byte >> 4,     # Repeating payload inserts a unique ID in here
         'is_repeated' : payload_flags_byte >> 0 & 0x01,   # Indicates a packet repeated off a payload.
+        'is_TDMA' : payload_flags_byte >> 0 & 0x02  # Indicates that the packet comes from a TDMA-mode payload
     }
     return payload_flags
 
@@ -132,14 +134,17 @@ def decode_payload_flags(packet):
 # Byte 2-9 - Callsign (Max 8 chars. Padded to 8 characters if shorter.)
 # Bytes 10-63 - Message (Max 55 characters. Not padded!)
 def create_text_message_packet(source="N0CALL", message="CQ CQ CQ"):
-    #TODO does this function need to have a source and destination address,
-    #or is it just for broadcast to all the RX'ing stations?
-
+#TODO this message packet would be RX'd by more than one payload in a TDMA sys
+#and then as it is to be immediately rebroadcast by the payload cause an on-air
+#collision.  Even if the payloads stuck to their TDMA slots, this would get broadcast 
+#twice (??) and tie up air time.  This needs consideration. -WA
     """
     Constructs text message packet.
 
     Constructs and returns a packet used for text messaging in the Horus
-    format.  Automatically builds in all payload ID, payload flags.
+    format.  Automatically builds in all payload ID, payload flags.  This packet
+    is transmitted by the ground station(s) and automatically repeated by 
+    any/all payloads that can hear it to provide a network wide messaging system.
 
     Parameters
     ----------
@@ -275,21 +280,19 @@ def decode_horus_payload_telemetry(packet):
 # The below is compatible with genpayload doc ID# f18a873592a77ed01ea432c3bcc16d0f
 def telemetry_to_sentence(telemetry):
     """
-    Summary line.
+    Convert telemetry data to text string for mapping software.
 
     Extended description of function.
 
     Parameters
     ----------
-    arg1 : int
-        Description of arg1
-    arg2 : str
-        Description of arg2
-
+    arg1 : list
+        Telemetry data from payload
+    
     Returns
     -------
-    int
-        Description of return value
+    String
+        Telemetry data in a comma delimited string with checksum
 
     """
 
@@ -451,15 +454,17 @@ def tx_packet(payload,blocking=False,timeout=4):
 
     Parameters
     ----------
-    arg1 : int
-        Description of arg1
-    arg2 : str
+    arg1 : list
+        Payload of packet to be transmitted in Horus format
+    arg2 : boolean
         Description of arg2
+    arg3 : int
+        Timeout threshold for attempting to send
+        
 
     Returns
     -------
-    int
-        Description of return value
+    Void
 
     """
 
@@ -518,7 +523,7 @@ def tx_packet(payload,blocking=False,timeout=4):
 # Produce short string representation of packet payload contents.
 def payload_to_string(packet):
     """
-    Summary line.
+    Converts payload list to text string.
 
     Extended description of function.
 
@@ -586,7 +591,7 @@ def udp_packet_to_string(udp_packet):
 
     try:
         pkt_type = udp_packet['type']
-    except Exception as e:
+    except Exception as e:      #FIXME this should be a less general exception? Throwing a W703 warning.
         return "Unknown UDP Packet"
 
     if pkt_type == "RXPKT":
@@ -659,21 +664,22 @@ def habitat_upload_payload_telemetry(telemetry, callsign="N0CALL"):
 # OziPlotter Upload Functions
 def oziplotter_upload_telemetry(telemetry,hostname="127.0.0.1"):
     """
-    Summary line.
+    Sends payload telemetry data to Ozi Explorer.
 
-    Extended description of function.
+    Takes telemetry data from a payload, modifies it into a sentance parsable
+    by a mapping program using the 'telemetry_to_sentance' function, and then
+    pushes that over the network to the hostname running the plot software.
 
     Parameters
     ----------
-    arg1 : int
-        Description of arg1
+    arg1 : list
+        Telemetry data from payload
     arg2 : str
-        Description of arg2
+        Hostname of computer with plotting software
 
     Returns
     -------
-    int
-        Description of return value
+    Void
 
     """
 
