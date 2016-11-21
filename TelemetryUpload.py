@@ -1,6 +1,6 @@
 #!/usr/bin/env python2.7
 #
-#   Project Horus 
+#   Project Horus
 #   Payload Telemetry Habitat Uploader
 #   Copyright 2015 Mark Jessop <vk5qi@rfhead.net>
 #
@@ -8,10 +8,12 @@
 #	This should also be useful in headless receiver situations.
 #
 
-import HorusPackets
+import HorusPackets as HP
 from threading import Thread
 from datetime import datetime
 import socket,json,sys,argparse
+
+#TODO import config file to get ports
 
 udp_broadcast_port = HORUS_UDP_PORT
 udp_listener_running = False
@@ -84,10 +86,10 @@ def udp_rx_thread():
 			m = s.recvfrom(MAX_JSON_LEN)
 		except socket.timeout:
 			m = None
-		
+
 		if m != None:
 				process_udp(m[0])
-	
+
 	print("Closing UDP Listener")
 	s.close()
 

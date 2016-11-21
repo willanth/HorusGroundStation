@@ -87,6 +87,8 @@
 #   }
 #
 
+#TODO add the facility to change radio frequency on payloads by command.
+
 import HorusPackets
 import json,socket,Queue,random, argparse, sys
 from time import sleep

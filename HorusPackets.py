@@ -17,11 +17,12 @@ from base64 import b64encode
 from hashlib import sha256
 from datetime import datetime
 
-
+#TODO import config file to get ports
 HORUS_UDP_PORT = 55672
 HORUS_OZIPLOTTER_PORT = 8942
 MAX_JSON_LEN = 2048
 TX_QUEUE_SIZE = 32
+
 
 # Packet Payload Types
 class HORUS_PACKET_TYPES:
@@ -136,14 +137,14 @@ def decode_payload_flags(packet):
 def create_text_message_packet(source="N0CALL", message="CQ CQ CQ"):
 #TODO this message packet would be RX'd by more than one payload in a TDMA sys
 #and then as it is to be immediately rebroadcast by the payload cause an on-air
-#collision.  Even if the payloads stuck to their TDMA slots, this would get broadcast 
+#collision.  Even if the payloads stuck to their TDMA slots, this would get broadcast
 #twice (??) and tie up air time.  This needs consideration. -WA
     """
     Constructs text message packet.
 
     Constructs and returns a packet used for text messaging in the Horus
     format.  Automatically builds in all payload ID, payload flags.  This packet
-    is transmitted by the ground station(s) and automatically repeated by 
+    is transmitted by the ground station(s) and automatically repeated by
     any/all payloads that can hear it to provide a network wide messaging system.
 
     Parameters
@@ -288,7 +289,7 @@ def telemetry_to_sentence(telemetry):
     ----------
     arg1 : list
         Telemetry data from payload
-    
+
     Returns
     -------
     String
@@ -445,7 +446,7 @@ def create_param_change_packet(address, param = HORUS_PAYLOAD_PARAMS.PING, value
     return param_packet
 
 # Transmit packet via UDP Broadcast
-def tx_packet(payload,blocking=False,timeout=4):
+def tx_packet(payload, blocking=False, timeout=4):
     """
     Sends constructed packet over UDP to PHY.
 
@@ -460,7 +461,7 @@ def tx_packet(payload,blocking=False,timeout=4):
         Description of arg2
     arg3 : int
         Timeout threshold for attempting to send
-        
+
 
     Returns
     -------
